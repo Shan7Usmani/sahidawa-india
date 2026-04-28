@@ -16,7 +16,14 @@ app.use(cors());
 app.use(express.json());
 app.use(morgan('dev'));
 
-// Basic Health Check Route
+// --- ADDED ROUTES ---
+
+// 1. Root Route (This fixes the "Cannot GET /" error)
+app.get('/', (req: Request, res: Response) => {
+  res.send('SahiDawa-India API is running successfully!');
+});
+
+// 2. Health Check Route
 app.get('/health', (req: Request, res: Response) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
