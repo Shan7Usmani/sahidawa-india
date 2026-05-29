@@ -8,7 +8,8 @@
         "start": "next start",
         "lint": "eslint .",
         "test": "jest --config jest.config.cjs",
-        "test:a11y:voice": "node scripts/voice-a11y-audit.mjs"
+        "test:a11y:voice": "node scripts/voice-a11y-audit.mjs",
+        "prepare": "command -v husky >/dev/null 2>&1 && husky || true"
     },
     "dependencies": {
         "@google/genai": "^2.5.0",
