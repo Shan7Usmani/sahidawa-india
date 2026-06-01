@@ -142,17 +142,17 @@ export default function ChatUI() {
     }, [input]);
 
     const sendMessage = useCallback(
-            async (text: string) => {
-                const trimmed = text.trim();
-                if (!trimmed || isTyping) return;
-                lastUserText.current = trimmed;
+        async (text: string) => {
+            const trimmed = text.trim();
+            if (!trimmed || isTyping) return;
+            lastUserText.current = trimmed;
             setShowWelcome(false);
-                const userMsg: Message = {
-                    id: genId(),
-                    role: "user",
-                    content: trimmed,
-                    timestamp: new Date(),
-                };
+            const userMsg: Message = {
+                id: genId(),
+                role: "user",
+                content: trimmed,
+                timestamp: new Date(),
+            };
             setMessages((prev) => [...prev, userMsg]);
             setInput("");
             setIsTyping(true);
@@ -323,7 +323,7 @@ export default function ChatUI() {
                             }`}
                         >
                             {isListening ? <IconStop /> : <IconMic size={20} />}
-
+                        </button>
                         <textarea
                             ref={inputRef}
                             value={input}
