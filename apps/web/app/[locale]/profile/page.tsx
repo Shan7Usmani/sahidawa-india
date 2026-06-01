@@ -5,7 +5,7 @@ import { User, ShieldCheck, Bell, ChevronRight, ArrowLeft } from "lucide-react";
 
 export default function ProfilePage() {
     return (
-        <div className="min-h-screen bg-(--color-surface-muted) px-6 py-8 text-(--color-text-primary)">
+        <div className="flex-grow bg-(--color-surface-muted) px-6 py-8 text-(--color-text-primary)">
             <div className="mx-auto max-w-3xl">
                 {/* Back Button */}
                 <Link

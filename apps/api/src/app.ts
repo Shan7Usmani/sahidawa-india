@@ -4,6 +4,7 @@ import path from "path";
 import logger from "./utils/logger";
 import swaggerUi from "swagger-ui-express";
 import { swaggerSpec } from "./utils/swagger";
+import { validateMlServiceConfig } from "./config/mlService";
 
 const rootEnvPath = path.resolve(__dirname, "../../../.env");
 dotenv.config({ path: rootEnvPath });
@@ -23,15 +24,20 @@ if (!process.env.SUPABASE_URL || !process.env.SUPABASE_ANON_KEY) {
     process.exit(1);
 }
 
+// Execute configuration validation after import completes
+validateMlServiceConfig();
+
 import cors from "cors";
 import helmet from "helmet";
 import morgan from "morgan";
+import compression from "compression";
 import adminRoutes from "./routes/admin.routes";
 import { requireAuth, requireRole } from "./middleware/auth";
-import { verifyLimiter } from "./middleware/rateLimit";
+
 import reportsRouter from "./routes/reports";
 import pharmaciesRouter from "./routes/pharmacies";
 import verifyRouter from "./routes/verify";
+import batchRouter from "./routes/batch";
 import analyticsRoutes from "./routes/analytics";
 import notificationsRouter from "./routes/notifications";
 import scanRouter from "./routes/scan";
@@ -44,6 +50,8 @@ import { createCorsOptions } from "./config/cors";
 import { errorHandler } from "./middleware/errorHandler";
 
 const app: Express = express();
+
+app.use(compression());
 
 app.use(
     helmet({
@@ -59,7 +67,6 @@ app.use(
 app.use(cors(createCorsOptions()));
 
 app.use(express.json({ limit: "1mb" }));
-app.use(verifyLimiter);
 
 app.use(
     morgan((tokens, req: Request, res: Response) => {
@@ -94,8 +101,8 @@ app.get("/", (_req: Request, res: Response) => {
     });
 });
 
-// Admin Routes — protected: must be authenticated + have admin role
-app.use("/api/v1/admin", requireAuth, requireRole("admin"), adminRoutes);
+// Admin Routes — protected: must be authenticated + have admin or moderator role
+app.use("/api/v1/admin", requireAuth, requireRole("admin", "moderator"), adminRoutes);
 
 app.get("/health", async (_req: Request, res: Response) => {
     const start = Date.now();
@@ -161,6 +168,7 @@ app.get("/health", async (_req: Request, res: Response) => {
 app.use("/api/reports", reportsRouter);
 app.use("/reports", reportsRouter);
 app.use("/api/pharmacies", pharmaciesRouter);
+app.use("/api/verify/batch", batchRouter);
 app.use("/api/verify", verifyRouter);
 app.use("/api/analytics", analyticsRoutes);
 app.use("/api/notifications", notificationsRouter);

@@ -2,6 +2,18 @@ import { Router, Request, Response } from "express";
 import multer from "multer";
 import logger from "../utils/logger";
 import { supabase } from "../db/client";
+import { getMlServiceUrl, MISSING_ML_SERVICE_URL_MESSAGE } from "../config/mlService";
+
+/**
+ * Escape ILIKE wildcard characters in a string derived from untrusted input
+ * (e.g. OCR text). In PostgreSQL ILIKE patterns, % matches any sequence of
+ * characters and _ matches any single character. Leaving them unescaped in
+ * OCR-derived text causes overly broad matches that return far more rows than
+ * intended and may expose unrelated medicine records.
+ */
+function escapeIlike(word: string): string {
+    return word.replace(/%/g, "\\%").replace(/_/g, "\\_");
+}
 
 const router = Router();
 
@@ -189,7 +201,16 @@ router.post("/extract", (req: Request, res: Response) => {
             return;
         }
 
-        const mlServiceUrl = process.env.ML_SERVICE_URL ?? "http://localhost:8000";
+        const mlServiceUrl = getMlServiceUrl();
+        if (!mlServiceUrl) {
+            logger.error(MISSING_ML_SERVICE_URL_MESSAGE, { route: "/api/v1/scan/extract" });
+            res.status(500).json({
+                error: "OCR service is not configured.",
+                code: "ML_SERVICE_URL_MISSING",
+            });
+            return;
+        }
+
         const targetUrl = `${mlServiceUrl}/ocr/extract`;
 
         logger.info(
@@ -275,6 +296,10 @@ router.post("/extract", (req: Request, res: Response) => {
                 const match = rawText.match(pattern);
                 if (match) {
                     const month = match[1];
+                    const monthVal = parseInt(month, 10);
+                    if (monthVal < 1 || monthVal > 12) {
+                        continue;
+                    }
                     let year = match[2];
                     if (year.length === 2) {
                         year = "20" + year;
@@ -318,7 +343,10 @@ router.post("/extract", (req: Request, res: Response) => {
                 if (searchWords.length > 0) {
                     // Build OR filter: brand_name ILIKE any word OR generic_name ILIKE any word
                     const orFilter = searchWords
-                        .map((w) => `brand_name.ilike.%${w}%,generic_name.ilike.%${w}%`)
+                        .map((w) => {
+                            const safe = escapeIlike(w);
+                            return `brand_name.ilike.%${safe}%,generic_name.ilike.%${safe}%`;
+                        })
                         .join(",");
 
                     const { data: dbMedicines, error: dbError } = await supabase
@@ -427,7 +455,9 @@ router.post("/extract", (req: Request, res: Response) => {
                             matchedName = name;
                             matchScore = 60;
                             matchSource = "substring_fallback";
-                            logger.info(`Substring fallback match: "${matchedName}" (capped score ${matchScore})`);
+                            logger.info(
+                                `Substring fallback match: "${matchedName}" (capped score ${matchScore})`
+                            );
                             break;
                         }
                     }
@@ -445,7 +475,9 @@ router.post("/extract", (req: Request, res: Response) => {
                                 "expiry_date, cdsco_approval_status, is_counterfeit_alert, " +
                                 "composition, mrp, jan_aushadhi_price"
                         )
-                        .or(`brand_name.ilike.%${matchedName}%,generic_name.ilike.%${matchedName}%`)
+                        .or(
+                            `brand_name.ilike.%${escapeIlike(matchedName)}%,generic_name.ilike.%${escapeIlike(matchedName)}%`
+                        )
                         .limit(1)
                         .maybeSingle();
 
@@ -517,6 +549,182 @@ router.post("/extract", (req: Request, res: Response) => {
             });
         }
     });
+});
+
+// ── Fuzzy Brand Matching & Verification Helper ────────────────────────────────
+
+function getLevenshteinDistance(a: string, b: string): number {
+    const matrix: number[][] = [];
+    for (let i = 0; i <= b.length; i++) matrix[i] = [i];
+    for (let j = 0; j <= a.length; j++) matrix[0][j] = j;
+    for (let i = 1; i <= b.length; i++) {
+        for (let j = 1; j <= a.length; j++) {
+            if (b.charAt(i - 1) === a.charAt(j - 1)) {
+                matrix[i][j] = matrix[i - 1][j - 1];
+            } else {
+                matrix[i][j] = Math.min(
+                    matrix[i - 1][j - 1] + 1, // substitution
+                    matrix[i][j - 1] + 1, // insertion
+                    matrix[i - 1][j] + 1 // deletion
+                );
+            }
+        }
+    }
+    return matrix[b.length][a.length];
+}
+
+function getSimilarity(a: string, b: string): number {
+    const distance = getLevenshteinDistance(a.toLowerCase(), b.toLowerCase());
+    const maxLength = Math.max(a.length, b.length);
+    if (maxLength === 0) return 100;
+    return Math.round((1 - distance / maxLength) * 100);
+}
+
+/**
+ * @openapi
+ * /api/v1/scan/match:
+ *   post:
+ *     tags:
+ *       - Medicine Scanner
+ *     summary: Fuzzy match a medicine brand or generic name
+ *     description: Matches a query name against valid medicine names in the database using Levenshtein distance.
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - query
+ *             properties:
+ *               query:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Match suggestions found
+ */
+router.post("/match", async (req: Request, res: Response) => {
+    const { query } = req.body;
+    if (!query || typeof query !== "string") {
+        res.status(400).json({ error: "query parameter is required and must be a string" });
+        return;
+    }
+
+    try {
+        const { data, error } = await supabase.from("medicines").select("brand_name, generic_name");
+
+        if (error) {
+            logger.error(`Database error during match: ${error.message}`);
+            res.status(500).json({ error: "Database query failed" });
+            return;
+        }
+
+        if (!data || data.length === 0) {
+            res.status(200).json([]);
+            return;
+        }
+
+        const candidates = Array.from(
+            new Set(data.flatMap((m) => [m.brand_name, m.generic_name]).filter(Boolean) as string[])
+        );
+
+        const scored = candidates.map((name) => {
+            const score = getSimilarity(query, name);
+            return { name, score };
+        });
+
+        const matches = scored
+            .filter((m) => m.score >= 50)
+            .sort((a, b) => b.score - a.score)
+            .slice(0, 3);
+
+        res.status(200).json(matches);
+    } catch (err) {
+        const msg = err instanceof Error ? err.message : "Unknown error";
+        logger.error(`Error during fuzzyMatchBrand: ${msg}`);
+        res.status(500).json({ error: "Fuzzy matching failed", details: msg });
+    }
+});
+
+/**
+ * @openapi
+ * /api/v1/scan/verify-brand:
+ *   post:
+ *     tags:
+ *       - Medicine Scanner
+ *     summary: Verify a medicine by brand name
+ *     description: Looks up a medicine by its brand name with exact or substring matching.
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - brandName
+ *             properties:
+ *               brandName:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Medicine verified successfully
+ */
+router.post("/verify-brand", async (req: Request, res: Response) => {
+    const { brandName } = req.body;
+    if (!brandName || typeof brandName !== "string") {
+        res.status(400).json({ error: "brandName is required and must be a string" });
+        return;
+    }
+
+    try {
+        const { data, error } = await supabase
+            .from("medicines")
+            .select(
+                "brand_name, generic_name, manufacturer, batch_number, expiry_date, cdsco_approval_status, is_counterfeit_alert"
+            )
+            .or(
+                `brand_name.ilike.%${escapeIlike(brandName)}%,generic_name.ilike.%${escapeIlike(brandName)}%`
+            )
+            .limit(1)
+            .maybeSingle();
+
+        if (error) {
+            logger.error(`Database lookup error for verify-brand: ${error.message}`);
+            res.status(500).json({
+                verified: false,
+                message: "Database lookup failed",
+            });
+            return;
+        }
+
+        if (!data) {
+            res.status(404).json({
+                verified: false,
+                message: "Medicine not found",
+            });
+            return;
+        }
+
+        res.status(200).json({
+            verified: true,
+            medicine: {
+                brand_name: data.brand_name,
+                generic_name: data.generic_name,
+                manufacturer: data.manufacturer,
+                batch_number: data.batch_number,
+                expiry_date: data.expiry_date,
+                cdsco_approval_status: data.cdsco_approval_status,
+                is_counterfeit_alert: data.is_counterfeit_alert,
+            },
+        });
+    } catch (err) {
+        const msg = err instanceof Error ? err.message : "Unknown error";
+        logger.error(`Error during verify-brand: ${msg}`);
+        res.status(500).json({
+            verified: false,
+            message: "Server error during brand verification",
+        });
+    }
 });
 
 export default router;
