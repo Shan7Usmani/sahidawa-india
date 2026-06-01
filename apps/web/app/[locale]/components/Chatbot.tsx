@@ -16,9 +16,7 @@ export default function Chatbot() {
     const pathname = usePathname();
     const t = useTranslations("chatbot");
     const [isOpen, setIsOpen] = useState(false);
-    const [messages, setMessages] = useState<Message[]>([
-        { text: t("welcome"), isBot: true },
-    ]);
+    const [messages, setMessages] = useState<Message[]>([{ text: t("welcome"), isBot: true }]);
     const [input, setInput] = useState("");
     const messagesEndRef = useRef<HTMLDivElement>(null);
 

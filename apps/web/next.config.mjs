@@ -4,19 +4,24 @@ const withNextIntl = createNextIntlPlugin();
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  // NOTE: output: 'standalone' is for Docker/Vercel production builds ONLY.
-  // It must NOT be set during local dev as it causes the dev server to exit immediately.
-  // Uncomment the line below only when building for production Docker images:
-  // output: 'standalone',
   images: {
-    remotePatterns: [
-      {
-        protocol: 'https',
-        hostname: 'res.cloudinary.com',
-      },
-    ],
+    formats: ["image/avif", "image/webp"],
+    deviceSizes: [320, 420, 640, 750, 1080],
+    minimumCacheTTL: 3600,
+    dangerouslyAllowSVG: false,
   },
-  serverExternalPackages: ['@supabase/ssr', '@supabase/supabase-js'],
+  compress: true,
+  poweredByHeader: false,
+  async headers() {
+    return [
+      {
+        source: "/api/:path*",
+        headers: [
+          { key: "Vary", value: "Accept-Encoding" },
+        ],
+      },
+    ];
+  },
 };
 
 export default withNextIntl(nextConfig);

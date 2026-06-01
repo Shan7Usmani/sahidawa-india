@@ -24,11 +24,13 @@ if (!process.env.SUPABASE_URL || !process.env.SUPABASE_ANON_KEY) {
     process.exit(1);
 }
 
+// Execute configuration validation after import completes
 validateMlServiceConfig();
 
 import cors from "cors";
 import helmet from "helmet";
 import morgan from "morgan";
+import compression from "compression";
 import adminRoutes from "./routes/admin.routes";
 import { requireAuth, requireRole } from "./middleware/auth";
 
@@ -48,6 +50,8 @@ import { createCorsOptions } from "./config/cors";
 import { errorHandler } from "./middleware/errorHandler";
 
 const app: Express = express();
+
+app.use(compression());
 
 app.use(
     helmet({

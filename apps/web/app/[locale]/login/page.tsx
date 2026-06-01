@@ -12,12 +12,8 @@ export default function LoginPage() {
     const router = useRouter();
     const supabaseUrl = getSupabaseUrl();
     const supabaseKey = getSupabaseAnonKey();
-    const isMissingEnvVars =
-        !supabaseUrl || !supabaseKey;
-    const supabase = createBrowserClient(
-        supabaseUrl,
-        supabaseKey
-    );
+    const isMissingEnvVars = !supabaseUrl || !supabaseKey;
+    const supabase = createBrowserClient(supabaseUrl, supabaseKey);
     const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
     const [loading, setLoading] = useState(false);

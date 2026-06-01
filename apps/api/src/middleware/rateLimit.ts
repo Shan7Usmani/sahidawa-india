@@ -15,7 +15,7 @@ export const verifyLimiter = rateLimit({
 // ── Batch traceability limiter ─────────────────────────────────────────────
 export const batchLimiter = rateLimit({
     windowMs: 60 * 60 * 1000, // 1 hour
-    max: 100,                  // 100 requests per hour per IP
+    max: 100, // 100 requests per hour per IP
     standardHeaders: true,
     legacyHeaders: false,
     keyGenerator: (req) => {

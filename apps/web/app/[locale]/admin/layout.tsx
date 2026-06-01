@@ -15,26 +15,22 @@ export default async function AdminLayout({
 }) {
     const resolvedParams = await params;
     const cookieStore = await cookies();
-    const supabase = createServerClient(
-        getSupabaseUrl(),
-        getSupabaseAnonKey(),
-        {
-            cookies: {
-                getAll() {
-                    return cookieStore.getAll();
-                },
-                setAll(cookiesToSet) {
-                    try {
-                        cookiesToSet.forEach(({ name, value, options }) =>
-                            cookieStore.set(name, value, options)
-                        );
-                    } catch {
-                        // Ignored in Server Component
-                    }
-                },
+    const supabase = createServerClient(getSupabaseUrl(), getSupabaseAnonKey(), {
+        cookies: {
+            getAll() {
+                return cookieStore.getAll();
             },
-        }
-    );
+            setAll(cookiesToSet) {
+                try {
+                    cookiesToSet.forEach(({ name, value, options }) =>
+                        cookieStore.set(name, value, options)
+                    );
+                } catch {
+                    // Ignored in Server Component
+                }
+            },
+        },
+    });
     const {
         data: { session },
     } = await supabase.auth.getSession();
