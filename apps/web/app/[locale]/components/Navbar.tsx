@@ -3,7 +3,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import Image from "next/image";
 import { History, Home, User, MapPin, Bell, MessageCircle } from "lucide-react";
-import { useRouter, useParams } from "next/navigation";
 import { Link, usePathname } from "@/i18n/routing";
 import { useTranslations } from "next-intl";
 import LanguageSwitcher from "../LanguageSwitcher";
@@ -71,10 +70,7 @@ const MOBILE_NAV_ITEMS: NavItem[] = [
 ];
 
 export default function Navbar() {
-    const router = useRouter();
-    const params = useParams();
     const pathname = usePathname();
-    const locale = Array.isArray(params.locale) ? params.locale[0] : params.locale;
     const tHome = useTranslations("Home");
     const tNav = useTranslations("Navigation");
 
@@ -108,10 +104,6 @@ export default function Navbar() {
     if (pathname === "/login" || pathname === "/health") {
         return null;
     }
-
-    const handleNavigation = (path: string) => {
-        router.push(`/${locale}/${path}`);
-    };
 
     // Active route detection — exact match for "/", prefix match for others
     const isActive = (href: string) => {
@@ -171,13 +163,13 @@ export default function Navbar() {
                     {/* Right — Action Buttons */}
                     <div className="ml-auto flex items-center justify-end gap-2 sm:gap-3">
                         <div className="group relative flex items-center">
-                            <button
-                                onClick={() => handleNavigation("health")}
+                            <Link
+                                href="/health"
                                 className="flex h-9 w-9 items-center justify-center rounded-full bg-linear-to-r from-blue-500 to-purple-500 text-white transition-all duration-200 hover:scale-105 hover:shadow-lg hover:shadow-purple-500/25 sm:h-10 sm:w-10"
                                 aria-label={tHome("open_ai_health_assistant")}
                             >
                                 <MessageCircle size={17} />
-                            </button>
+                            </Link>
 
                             <div className="pointer-events-none absolute top-full left-1/2 z-50 mt-2 -translate-x-1/2 rounded-md bg-slate-900 px-2 py-1 text-xs font-medium whitespace-nowrap text-white opacity-0 transition-all duration-200 group-hover:opacity-100">
                                 Health Companion
@@ -194,24 +186,24 @@ export default function Navbar() {
 
                         <ThemeToggle />
 
-                        <button
-                            onClick={() => handleNavigation("login")}
+                        <Link
+                            href="/login"
                             className="flex h-9 w-9 items-center justify-center rounded-full border border-emerald-500/30 bg-emerald-50/70 text-emerald-700 transition-all duration-200 hover:scale-105 hover:border-emerald-500/50 hover:bg-emerald-100 sm:hidden dark:bg-emerald-500/10 dark:text-emerald-400 dark:hover:bg-emerald-500/20"
                             aria-label={tHome("sign_in")}
                             title={tHome("sign_in")}
                         >
                             <User size={17} />
                             <span className="sr-only">{tHome("sign_in")}</span>
-                        </button>
+                        </Link>
 
-                        <button
-                            onClick={() => handleNavigation("login")}
+                        <Link
+                            href="/login"
                             className="hidden h-9 items-center justify-center gap-2 rounded-full border border-emerald-500/30 bg-emerald-50/50 px-4 py-1.5 text-sm font-bold text-emerald-700 transition-all duration-200 hover:scale-105 hover:border-emerald-500/50 hover:bg-emerald-100 sm:flex sm:h-10 sm:px-5 sm:py-2 dark:bg-emerald-500/10 dark:text-emerald-400 dark:hover:bg-emerald-500/20"
                             aria-label={tHome("sign_in")}
                         >
                             <User size={16} />
                             <span>{tHome("sign_in")}</span>
-                        </button>
+                        </Link>
                     </div>
                 </div>
             </header>
