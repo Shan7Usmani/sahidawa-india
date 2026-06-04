@@ -197,13 +197,15 @@ export async function POST(req: Request) {
         const language = localeMap[finalLocale as keyof typeof localeMap] || "English";
         const systemPrompt = BASE_PROMPT.replace("{language}", language);
 
-        const responseStream = await ai.models.generateContentStream({
+        const responseStream = (await ai.models.generateContentStream({
             model: "gemini-2.5-flash",
             contents: formattedContents,
             config: {
                 systemInstruction: systemPrompt,
             },
-        });
+        })) as AsyncIterable<TextStreamChunk>;
+        const responseIterator = responseStream[Symbol.asyncIterator]();
+        const firstStreamResult = await responseIterator.next();
 
         const encoder = new TextEncoder();
         const stream = new ReadableStream<Uint8Array>({
@@ -211,12 +213,24 @@ export async function POST(req: Request) {
                 let usageMetadata: TextStreamChunk["usageMetadata"];
 
                 try {
-                    for await (const chunk of responseStream as AsyncIterable<TextStreamChunk>) {
+                    const enqueueChunk = (chunk: TextStreamChunk) => {
                         usageMetadata = chunk.usageMetadata ?? usageMetadata;
 
                         if (chunk.text) {
                             controller.enqueue(encoder.encode(chunk.text));
                         }
+                    };
+
+                    if (!firstStreamResult.done) {
+                        enqueueChunk(firstStreamResult.value);
+                    }
+
+                    while (true) {
+                        const chunkResult = await responseIterator.next();
+                        if (chunkResult.done) {
+                            break;
+                        }
+                        enqueueChunk(chunkResult.value);
                     }
 
                     const latency_ms = Date.now() - startTime;
@@ -247,6 +261,9 @@ export async function POST(req: Request) {
                     });
                     controller.error(streamError);
                 }
+            },
+            async cancel() {
+                await responseIterator.return?.();
             },
         });
 

@@ -20,6 +20,12 @@ function createTextStream(chunks: string[]) {
     })();
 }
 
+function createFailingTextStream(error: unknown) {
+    return (async function* () {
+        throw error;
+    })();
+}
+
 describe("POST /api/chat", () => {
     beforeEach(() => {
         generateContentMock.mockReset();
@@ -136,6 +142,26 @@ describe("POST /api/chat", () => {
             config: expect.any(Object),
         });
         expect(generateContentMock).not.toHaveBeenCalled();
+    });
+
+    it("returns the existing JSON error response when Gemini stream fails before first chunk", async () => {
+        generateContentStreamMock.mockResolvedValue(createFailingTextStream({ status: 503 }));
+
+        const response = await POST(
+            new Request("http://localhost/api/chat", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    messages: [{ role: "user", content: "What is paracetamol?" }],
+                }),
+            })
+        );
+
+        expect(response.status).toBe(503);
+        expect(response.headers.get("content-type")).toContain("application/json");
+        await expect(response.json()).resolves.toEqual({
+            error: "Google AI is currently experiencing high demand. Please try again in a few moments.",
+        });
     });
 
     it("uses Punjabi in the standard chat system prompt when locale is pa", async () => {
