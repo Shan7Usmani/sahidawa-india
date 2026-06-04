@@ -15,13 +15,16 @@
 
 <!-- MANDATORY: Drag & drop UI screenshots here, or paste terminal/console logs. No proof = No merge. -->
 
+## 🏷️ PR Type
+
+<!-- Select the type of PR. This helps maintainers add the correct labels. -->
+
+- [ ] 🐛 `type: bug`
+- [ ] ✨ `type: feature`
+- [ ] 📖 `type: docs`
+- [ ] 🧪 `type: testing`
+
 ## ✅ Checklist
 
 - [ ] My PR has a linked issue (`Closes #123`)
-- [ ] I have attached screenshots/logs as proof of work
-- [ ] I ran the project locally and verified there are no compile/build errors
 - [ ] I have pulled the latest `main` and resolved any conflicts
-- [ ] My code follows the patterns and conventions in `docs/code-guide.md`
-- [ ] **(If backend change)** My backend responses return structured JSON `{ success: boolean, data?: any, error?: { message: string } }`
-- [ ] I have performed a self-review of my own code
-- [ ] I am a GSSoC 2026 participant
