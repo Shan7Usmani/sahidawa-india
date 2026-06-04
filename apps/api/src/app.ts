@@ -7,7 +7,7 @@ import { swaggerSpec } from "./utils/swagger";
 import { validateMlServiceConfig } from "./config/mlService";
 import cookieParser from "cookie-parser";
 import { doubleCsrf } from "csrf-csrf";
-import mapRouter from './routes/map';
+import mapRouter from "./routes/map";
 
 // ── Environment Configuration ──────────────────────────────────────────────
 const rootEnvPath = path.resolve(__dirname, "../../../.env");
@@ -82,10 +82,7 @@ const {
     size: 64,
     ignoredMethods: ["GET", "HEAD", "OPTIONS"],
 });
-// Skip CSRF in test environment so supertest can run without mock cookies
-if (process.env.NODE_ENV !== "test") {
-    app.use(doubleCsrfProtection);
-}
+app.use(doubleCsrfProtection);
 
 // ── CSRF token endpoint — frontend fetches this once on load ───────────────
 app.get("/api/csrf-token", (req: Request, res: Response) => {
@@ -202,7 +199,7 @@ app.use("/api/v1/scan", scanRouter);
 app.use("/api/v1/lasa", lasaRouter);
 app.use("/api/v1/alerts", alertsRouter);
 app.use("/api/ml", mlRouter);
-app.use('/api/map', mapRouter);
+app.use("/api/map", mapRouter);
 
 // ── Swagger UI Documentation (/api/docs) ──────────────────────────────────
 app.use(
