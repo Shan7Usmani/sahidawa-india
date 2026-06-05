@@ -104,6 +104,35 @@ def validate_pr_size(pr: dict) -> None:
     print(f"✅ PR Size Validation Passed. Lines changed: {lines_changed} (Threshold: {threshold})")
 
 
+def extract_linkedin_url(body: str) -> str:
+    match = re.search(r'https:\/\/(www\.)?linkedin\.com\/in\/[A-Za-z0-9_-]+', body)
+    if match:
+        return match.group(0)
+    return ""
+
+
+def validate_linkedin_url(pr: dict) -> str:
+    linkedin_url = extract_linkedin_url(pr.get("body", ""))
+    if not linkedin_url:
+        print("🛑 REJECTED: No LinkedIn Profile URL found in the PR description.")
+        print("   Without a LinkedIn URL, we cannot properly tag/mention the contributor.")
+        print("   Exiting gracefully without triggering Make.com webhook.")
+        
+        # Post a friendly comment on the PR using gh cli
+        pr_number = pr.get("number")
+        if pr_number and pr_number != "N/A":
+            comment = (
+                f"🎉 Awesome work on getting your `{pr.get('labels', 'advanced')}` PR merged! "
+                f"We wanted to give you a LinkedIn shoutout, but couldn't find your LinkedIn Profile URL in the PR description.\n\n"
+                f"If you'd like a shoutout, please edit the PR description to include your LinkedIn URL (e.g. `https://linkedin.com/in/username`) and we will feature you!"
+            )
+            os.system(f'gh pr comment {pr_number} --body "{comment}"')
+            
+        sys.exit(0)
+    print(f"✅ Found LinkedIn URL: {linkedin_url}")
+    return linkedin_url
+
+
 def evaluate_pr_impact(pr: dict) -> None:
     """
     Sends the PR diff to Gemini to semantically evaluate if it's a genuine 
@@ -199,7 +228,7 @@ def generate_post_with_gemini(pr: dict, tier_display: str, tier_desc: str) -> st
 
     user_prompt = (
         f"Write a short, genuine LinkedIn shoutout for this contributor:\n\n"
-        f"Contributor: {pr['author']} (GitHub Profile: https://github.com/{pr['author']})\n"
+        f"Contributor: {pr['author']} (LinkedIn: {pr['linkedin_url']})\n"
         f"PR Title: {pr['title']}\n"
         f"PR Number: #{pr['number']}\n"
         f"Tier: {tier_display}\n"
@@ -207,7 +236,7 @@ def generate_post_with_gemini(pr: dict, tier_display: str, tier_desc: str) -> st
         f"Project: {PROJECT_NAME} — {PROJECT_TAGLINE}\n"
         f"PR Description: {pr['body'] if pr['body'] else 'Not provided'}\n\n"
         f"CRITICAL REQUIREMENTS:\n"
-        f"1. Start by directly thanking and tagging the contributor as 'GitHub Contributor: @{pr['author']}' in a warm, personal way.\n"
+        f"1. Start by directly thanking the contributor and including their LinkedIn profile link: {pr['linkedin_url']} in a warm, personal way.\n"
         f"2. Mention briefly what they built ({pr['title']}) and why it's important for the project.\n"
         f"3. Make them feel truly valued. Tell them their hard work is making a real difference in this {tier_display} task. Motivate them to keep solving issues.\n"
         f"4. End by warmly welcoming new developers to join the journey (GSSoC2026), with the repo link: {PROJECT_GITHUB_URL}\n"
@@ -259,7 +288,7 @@ def generate_post_with_gemini(pr: dict, tier_display: str, tier_desc: str) -> st
 
 def _static_fallback(pr: dict, tier_display: str) -> str:
     return (
-        f"A massive thank you from the heart to our contributor, @{pr['author']} (https://github.com/{pr['author']}).\n\n"
+        f"A massive thank you from the heart to our contributor, {pr['author']} ({pr['linkedin_url']}).\n\n"
         f"They just landed PR #{pr['number']}: \"{pr['title']}\". "
         f"This was a {tier_display} contribution, and the effort put into it is truly inspiring. "
         f"Your work is directly helping {PROJECT_NAME} become a better platform for everyone. We deeply value your time and technical expertise. "
@@ -349,6 +378,9 @@ def main():
 
     tier_display, tier_desc = determine_tier(pr["labels"])
     print(f"🏆 Tier: {tier_display}")
+
+    # Check for LinkedIn Profile Link
+    pr["linkedin_url"] = validate_linkedin_url(pr)
 
     # The Smart Gate Validations
     validate_pr_size(pr)
