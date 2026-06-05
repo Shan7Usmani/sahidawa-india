@@ -105,9 +105,11 @@ def validate_pr_size(pr: dict) -> None:
 
 
 def extract_linkedin_url(body: str) -> str:
-    match = re.search(r'https:\/\/(www\.)?linkedin\.com\/in\/[A-Za-z0-9_-]+', body)
+    # Requires a format like "LinkedIn: https://linkedin.com/in/username" 
+    # to avoid accidentally extracting a random link from the PR body.
+    match = re.search(r'(?i)LinkedIn(?: Profile(?: URL)?)?:\s*(https:\/\/(www\.)?linkedin\.com\/in\/[A-Za-z0-9_-]+)', body)
     if match:
-        return match.group(0)
+        return match.group(1)
     return ""
 
 
@@ -140,7 +142,8 @@ def validate_linkedin_url(pr: dict) -> str:
             comment_snippet = "Your PR is approved for a LinkedIn shoutout!"
             comment_text = (
                 f"👋 {comment_snippet}\n"
-                f"Please **edit the PR description** to include your LinkedIn URL (Format: `https://linkedin.com/in/username`)."
+                f"Please **edit the PR description** and add the following exact line so our bot can extract it:\n"
+                f"`LinkedIn: https://linkedin.com/in/your-username`"
             )
             if not check_if_commented(pr_number, comment_snippet):
                 os.system(f'gh pr comment {pr_number} --body "{comment_text}"')
