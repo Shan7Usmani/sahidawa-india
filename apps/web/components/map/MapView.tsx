@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import dynamic from "next/dynamic";
 interface Pharmacy {
     id: number;
@@ -59,35 +59,89 @@ export default function MapView() {
     const [showPharmacies, setShowPharmacies] = useState(true);
     const [showAsha, setShowAsha] = useState(true);
     const [loading, setLoading] = useState(true);
+    const [error, setError] = useState<string | null>(null);
+
+    const abortControllerRef = useRef<AbortController | null>(null);
 
     useEffect(() => {
-        navigator.geolocation.getCurrentPosition(
-            async (pos) => {
-                const { latitude: lat, longitude: lng } = pos.coords;
-                setUserLocation([lat, lng]);
+        let mounted = true;
 
-                const res = await fetch(`/api/map/nearby?lat=${lat}&lng=${lng}&radius_km=10`);
+        async function loadForCoords(lat: number, lng: number) {
+            // abort previous
+            abortControllerRef.current?.abort();
+            const controller = new AbortController();
+            // store controller on the ref
+            abortControllerRef.current = controller;
+
+            setLoading(true);
+            setError(null);
+
+            try {
+                const res = await fetch(`/api/map/nearby?lat=${lat}&lng=${lng}&radius_km=10`, {
+                    signal: controller.signal,
+                });
+
+                if (!res.ok) {
+                    const text = await res.text().catch(() => "");
+                    throw new Error(`Map API error: ${res.status} ${text}`);
+                }
+
                 const data = await res.json();
-                setPharmacies(data.pharmacies);
-                setAshaWorkers(data.asha_workers);
-                setLoading(false);
+
+                if (!mounted) return;
+
+                setPharmacies(Array.isArray(data.pharmacies) ? data.pharmacies : []);
+                setAshaWorkers(Array.isArray(data.asha_workers) ? data.asha_workers : []);
+            } catch (e: any) {
+                if (e?.name === "AbortError") return;
+                console.error("[MapView] Error loading nearby map data:", e);
+                if (mounted) setError("Unable to load nearby map data.");
+            } finally {
+                if (mounted) setLoading(false);
+            }
+        }
+
+        navigator.geolocation.getCurrentPosition(
+            (pos) => {
+                const { latitude: lat, longitude: lng } = pos.coords;
+                if (!mounted) return;
+                setUserLocation([lat, lng]);
+                void loadForCoords(lat, lng);
             },
             () => {
                 // fallback: default to Pune
                 const fallback: [number, number] = [18.5204, 73.8567];
+                if (!mounted) return;
                 setUserLocation(fallback);
-                fetch(`/api/map/nearby?lat=${fallback[0]}&lng=${fallback[1]}&radius_km=10`)
-                    .then((r) => r.json())
-                    .then((data) => {
-                        setPharmacies(data.pharmacies);
-                        setAshaWorkers(data.asha_workers);
-                        setLoading(false);
-                    });
+                void loadForCoords(fallback[0], fallback[1]);
             }
         );
+
+        return () => {
+            mounted = false;
+            abortControllerRef.current?.abort();
+        };
     }, []);
 
-    if (!userLocation || loading) return <div className="p-8 text-center">Loading map...</div>;
+    // decode simple HTML entities to reduce broken encoding artifacts in popups
+    function decodeHtmlEntities(input: string | null | undefined) {
+        if (!input) return "";
+        try {
+            const txt = document.createElement("textarea");
+            txt.innerHTML = input;
+            return txt.value;
+        } catch {
+            return input;
+        }
+    }
+
+    if (!userLocation || loading)
+        return (
+            <div className="p-8 text-center">
+                {loading ? <span>Loading map…</span> : <span>Initializing map…</span>}
+                {error && <div className="text-sm text-red-600">{error}</div>}
+            </div>
+        );
 
     return (
         <div className="flex flex-col gap-3">
@@ -122,12 +176,12 @@ export default function MapView() {
                     pharmacies.map((p) => (
                         <Marker key={`ph-${p.id}`} position={[p.lat, p.lng]} icon={greenIcon}>
                             <Popup>
-                                <strong>{p.name}</strong>
+                                <strong>{decodeHtmlEntities(p.name)}</strong>
                                 <br />
                                 Type: {p.type}
                                 <br />
                                 <div className="flex items-center gap-1">
-                                    <span>Address: {p.address}</span>
+                                    <span>Address: {decodeHtmlEntities(p.address)}</span>
                                     <CopyButton text={p.address} className="h-4 w-4" />
                                 </div>
                                 Distance: {p.distance_km} km
@@ -141,7 +195,7 @@ export default function MapView() {
                     ashaWorkers.map((a) => (
                         <Marker key={`asha-${a.id}`} position={[a.lat, a.lng]} icon={blueIcon}>
                             <Popup>
-                                <strong>{a.name}</strong>
+                                <strong>{decodeHtmlEntities(a.name)}</strong>
                                 <br />
                                 District: {a.district}
                                 <br />
