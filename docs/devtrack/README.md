@@ -819,3 +819,4 @@
 | [#1634](https://github.com/RatLoopz/sahidawa-india/pull/1634) | 2026-06-11 | Frontend | 13 | @hrx01-dev | [View Doc](devtrack/2026-06/PR-1634-feature-add-date-range-and-status-filters-to-csv-s.md) |
 | [#1694](https://github.com/RatLoopz/sahidawa-india/pull/1694) | 2026-06-11 | Backend | 61 | @shauryavardhan1307 | [View Doc](devtrack/2026-06/PR-1694-feat-implement-medicine-interaction-checker-closes.md) / [ADR](devtrack/adr/ADR-031-feat-implement-medicine-interaction-checker-closes.md) |
 | [#1705](https://github.com/RatLoopz/sahidawa-india/pull/1705) | 2026-06-12 | Frontend | 5 | @Yogender-verma | [View Doc](devtrack/2026-06/PR-1705-feat-login-improve-password-input-with-visibility-.md) |
+| [#1756](https://github.com/RatLoopz/sahidawa-india/pull/1756) | 2026-06-12 | DevOps | 8 | @dipexplorer | [View Doc](devtrack/2026-06/PR-1756-feat-workflow-implement-strict-creator-only-assign.md) |
