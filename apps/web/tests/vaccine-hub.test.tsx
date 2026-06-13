@@ -1,7 +1,17 @@
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
-import VaccineHubPage from "../page";
+/** @jest-environment jsdom */
+import "@testing-library/jest-dom";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import VaccineHubPage from "@/app/[locale]/vaccine-hub/page";
+
+jest.mock("next-intl", () => ({
+    useTranslations: () => (key: string) => key,
+    useFormatter: () => ({
+        dateTime: (date: Date) => {
+            const d = new Date(date);
+            return `${d.getDate()} ${d.toLocaleString("en-US", { month: "short" })} ${d.getFullYear()}`;
+        },
+    }),
+}));
 
 // Mock localStorage
 const localStorageMock = (() => {
@@ -25,6 +35,18 @@ Object.defineProperty(window, "localStorage", {
     value: localStorageMock,
 });
 
+const user = {
+    type: async (element: HTMLElement, value: string) => {
+        fireEvent.change(element, { target: { value } });
+    },
+    click: async (element: HTMLElement) => {
+        fireEvent.click(element);
+    },
+};
+const userEvent = {
+    setup: () => user,
+};
+
 describe("VaccineHubPage Integration Tests", () => {
     beforeEach(() => {
         localStorage.clear();
@@ -37,8 +59,64 @@ describe("VaccineHubPage Integration Tests", () => {
     it("renders the page with empty state initially", () => {
         render(<VaccineHubPage />);
 
-        expect(screen.getByText(/Vaccine Hub & Immunization Tracker/i)).toBeInTheDocument();
-        expect(screen.getByText(/No Vaccine Selected/i)).toBeInTheDocument();
+        expect(screen.getByText("title")).toBeInTheDocument();
+        expect(
+            screen.getByRole("heading", { name: "Child Vaccination Tracker" })
+        ).toBeInTheDocument();
+        expect(screen.getByText("noVaccineSelected")).toBeInTheDocument();
+    });
+
+    it("generates a personalized child schedule and toggles completed doses", async () => {
+        render(<VaccineHubPage />);
+
+        await user.type(screen.getByLabelText("Child name"), "Aarav");
+        await user.type(screen.getByLabelText("Date of birth"), "2024-01-01");
+
+        await waitFor(() => {
+            expect(screen.getByText("Aarav")).toBeInTheDocument();
+            expect(screen.getByText("BCG")).toBeInTheDocument();
+            expect(screen.getByText("OPV-1")).toBeInTheDocument();
+        });
+
+        await user.click(screen.getByRole("button", { name: /mark BCG completed/i }));
+
+        expect(screen.getByRole("button", { name: /mark BCG due/i })).toBeInTheDocument();
+    });
+
+    it("persists child tracker state to localStorage when signed out", async () => {
+        render(<VaccineHubPage />);
+
+        await user.type(screen.getByLabelText("Child name"), "Maya");
+        await user.type(screen.getByLabelText("Date of birth"), "2024-01-01");
+
+        await waitFor(() => {
+            expect(
+                JSON.parse(localStorage.getItem("vaccine-hub-child-tracker-v1") ?? "{}")
+            ).toEqual({
+                childName: "Maya",
+                dateOfBirth: "2024-01-01",
+                completedDoseIds: [],
+            });
+        });
+    });
+
+    it("shows a validation message for future child dates of birth", async () => {
+        render(<VaccineHubPage />);
+        const futureDate = new Date();
+        futureDate.setDate(futureDate.getDate() + 1);
+
+        await user.type(
+            screen.getByLabelText("Date of birth"),
+            futureDate.toISOString().split("T")[0]
+        );
+
+        expect(screen.getByText("Date of birth cannot be in the future.")).toBeInTheDocument();
+    });
+
+    it("limits child profile names to a mobile-safe length", () => {
+        render(<VaccineHubPage />);
+
+        expect(screen.getByLabelText("Child name")).toHaveAttribute("maxLength", "80");
     });
 
     it("shows vaccine selector control", () => {
@@ -50,7 +128,6 @@ describe("VaccineHubPage Integration Tests", () => {
 
     it("selects a vaccine and saves to localStorage", async () => {
         render(<VaccineHubPage />);
-        const user = userEvent.setup();
 
         // Open dropdown
         const selector = screen.getByRole("button", { name: /Select a vaccine/i });
@@ -62,12 +139,12 @@ describe("VaccineHubPage Integration Tests", () => {
         });
 
         // Select polio
-        const polioOption = screen.getByText(/Poliomyelitis/i);
+        const polioOption = screen.getAllByText(/Poliomyelitis/i)[0];
         await user.click(polioOption);
 
         // Verify vaccine details appear
         await waitFor(() => {
-            expect(screen.getByText(/Poliomyelitis/i)).toBeInTheDocument();
+            expect(screen.getAllByText(/Poliomyelitis/i)[0]).toBeInTheDocument();
         });
 
         // Verify localStorage was updated
@@ -79,22 +156,21 @@ describe("VaccineHubPage Integration Tests", () => {
 
         render(<VaccineHubPage />);
 
-        expect(screen.getByText(/Measles, Mumps & Rubella/i)).toBeInTheDocument();
+        expect(screen.getAllByText(/Measles, Mumps & Rubella/i)[0]).toBeInTheDocument();
     });
 
     it("shows date input when vaccine is selected", async () => {
         render(<VaccineHubPage />);
-        const user = userEvent.setup();
 
         // Open dropdown and select vaccine
         const selector = screen.getByRole("button", { name: /Select a vaccine/i });
         await user.click(selector);
 
         await waitFor(() => {
-            screen.getByText(/Poliomyelitis/i);
+            expect(screen.getAllByText(/Poliomyelitis/i)[0]).toBeInTheDocument();
         });
 
-        const polioOption = screen.getByText(/Poliomyelitis/i);
+        const polioOption = screen.getAllByText(/Poliomyelitis/i)[0];
         await user.click(polioOption);
 
         // Verify date input appears
@@ -106,17 +182,16 @@ describe("VaccineHubPage Integration Tests", () => {
 
     it("calculates and displays dose schedule with date", async () => {
         render(<VaccineHubPage />);
-        const user = userEvent.setup();
 
         // Select vaccine
         const selector = screen.getByRole("button", { name: /Select a vaccine/i });
         await user.click(selector);
 
         await waitFor(() => {
-            screen.getByText(/Poliomyelitis/i);
+            expect(screen.getAllByText(/Poliomyelitis/i)[0]).toBeInTheDocument();
         });
 
-        const polioOption = screen.getByText(/Poliomyelitis/i);
+        const polioOption = screen.getAllByText(/Poliomyelitis/i)[0];
         await user.click(polioOption);
 
         // Enter date
@@ -131,23 +206,22 @@ describe("VaccineHubPage Integration Tests", () => {
 
     it("displays safety information", async () => {
         render(<VaccineHubPage />);
-        const user = userEvent.setup();
 
         // Select vaccine
         const selector = screen.getByRole("button", { name: /Select a vaccine/i });
         await user.click(selector);
 
         await waitFor(() => {
-            screen.getByText(/Poliomyelitis/i);
+            expect(screen.getAllByText(/Poliomyelitis/i)[0]).toBeInTheDocument();
         });
 
-        const polioOption = screen.getByText(/Poliomyelitis/i);
+        const polioOption = screen.getAllByText(/Poliomyelitis/i)[0];
         await user.click(polioOption);
 
         // Verify safety sections appear
         await waitFor(() => {
-            expect(screen.getByText(/Common Effects/i)).toBeInTheDocument();
-            expect(screen.getByText(/Severe Reactions/i)).toBeInTheDocument();
+            expect(screen.getByText("commonEffects")).toBeInTheDocument();
+            expect(screen.getByText("severeReactions")).toBeInTheDocument();
         });
     });
 
@@ -160,10 +234,10 @@ describe("VaccineHubPage Integration Tests", () => {
         await user.click(selector);
 
         await waitFor(() => {
-            screen.getByText(/Poliomyelitis/i);
+            expect(screen.getAllByText(/Poliomyelitis/i)[0]).toBeInTheDocument();
         });
 
-        const polioOption = screen.getByText(/Poliomyelitis/i);
+        const polioOption = screen.getAllByText(/Poliomyelitis/i)[0];
         await user.click(polioOption);
 
         // Verify aftercare section appears
@@ -181,10 +255,10 @@ describe("VaccineHubPage Integration Tests", () => {
         await user.click(selector);
 
         await waitFor(() => {
-            screen.getByText(/Poliomyelitis/i);
+            expect(screen.getAllByText(/Poliomyelitis/i)[0]).toBeInTheDocument();
         });
 
-        const polioOption = screen.getByText(/Poliomyelitis/i);
+        const polioOption = screen.getAllByText(/Poliomyelitis/i)[0];
         await user.click(polioOption);
 
         const dateInput = screen.getByLabelText(/birth date/i) as HTMLInputElement;
@@ -197,7 +271,7 @@ describe("VaccineHubPage Integration Tests", () => {
 
         // Verify persistence
         await waitFor(() => {
-            expect(screen.getByText(/Poliomyelitis/i)).toBeInTheDocument();
+            expect(screen.getAllByText(/Poliomyelitis/i)[0]).toBeInTheDocument();
         });
 
         expect(localStorage.getItem("vaccine-hub-selected-vaccine")).toBe("polio");
@@ -213,10 +287,10 @@ describe("VaccineHubPage Integration Tests", () => {
         await user.click(selector);
 
         await waitFor(() => {
-            screen.getByText(/Poliomyelitis/i);
+            expect(screen.getAllByText(/Poliomyelitis/i)[0]).toBeInTheDocument();
         });
 
-        const polioOption = screen.getByText(/Poliomyelitis/i);
+        const polioOption = screen.getAllByText(/Poliomyelitis/i)[0];
         await user.click(polioOption);
 
         const dateInput = screen.getByLabelText(/birth date/i) as HTMLInputElement;
@@ -225,7 +299,7 @@ describe("VaccineHubPage Integration Tests", () => {
         expect(localStorage.getItem("vaccine-hub-initial-date")).toBe("2024-01-01");
 
         // Switch vaccine
-        selector = screen.getByRole("button", { name: /Poliomyelitis/i });
+        selector = screen.getByRole("button", { name: /Select a vaccine/i });
         await user.click(selector);
 
         await waitFor(() => {

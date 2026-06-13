@@ -14,6 +14,7 @@ import {
     ChevronDown,
     RefreshCw,
     Loader2,
+    WifiOff,
 } from "lucide-react";
 import { PageHeader } from "../components/PageHeader";
 import PharmacyMap, {
@@ -33,6 +34,8 @@ import {
 } from "../../../lib/api";
 import { type AshaWorker } from "./PharmacyMap";
 import MapHeaderLoadingIndicator from "./MapHeaderLoadingIndicator";
+import { useOfflineStatus } from "@/hooks/useOfflineStatus";
+import { buildCacheKey, saveToCache, loadFromCache } from "./usePharmacyCache";
 
 // ── Constants ────────────────────────────────────────────────────────────────
 const DEFAULT_CENTER = { lat: 28.6139, lng: 77.209 }; // New Delhi
@@ -279,8 +282,26 @@ export default function PharmacyMapPage() {
     const [pharmacyCount, setPharmacyCount] = useState(0);
     const [heatmapMode, setHeatmapMode] = useState<HeatmapMode>("none");
 
+    // ── Offline cache state ───────────────────────────────────────────────────
+    const { isOffline } = useOfflineStatus();
+    const [isShowingCached, setIsShowingCached] = useState(false);
+
     const pendingBoundsRef = useRef<MapBounds | null>(null);
     const initialFetchDone = useRef(false);
+
+    useEffect(() => {
+        if (typeof window !== "undefined") {
+            const params = new URLSearchParams(window.location.search);
+            const filterParam = params.get("filter");
+            if (filterParam === "govt" || filterParam === "verified" || filterParam === "named") {
+                setActiveFilter(filterParam as any);
+            }
+            const queryParam = params.get("query");
+            if (queryParam) {
+                setSearchQuery(queryParam);
+            }
+        }
+    }, []);
 
     const fetchNearby = useCallback(async (lat: number, lng: number, radius = 10000) => {
         setIsLoading(true);
@@ -320,8 +341,27 @@ export default function PharmacyMapPage() {
             setAshaWorkers(asha);
             setPharmacyCount(merged.length);
             initialFetchDone.current = true;
+
+            // ── Save to IndexedDB cache on successful fetch ───────────────
+            const cacheKey = buildCacheKey(lat, lng);
+            await saveToCache(cacheKey, merged, asha);
+            setIsShowingCached(false);
         } catch (err) {
             console.error("Critical error in pharmacy rendering:", err);
+
+            // ── Offline fallback: try loading from IndexedDB ──────────────
+            const cacheKey = buildCacheKey(lat, lng);
+            const cached = await loadFromCache(cacheKey);
+            if (cached) {
+                setPharmacies(cached.pharmacies);
+                setAshaWorkers(cached.ashaWorkers);
+                setPharmacyCount(cached.pharmacies.length);
+                setIsShowingCached(true);
+                initialFetchDone.current = true;
+                setIsLoading(false);
+                return;
+            }
+
             setFetchError("Could not load pharmacies. Try again.");
             setTimeout(() => setFetchError(null), 5000);
         } finally {
@@ -329,6 +369,12 @@ export default function PharmacyMapPage() {
         }
     }, []);
 
+    // ── Clear cached banner when back online ─────────────────────────────────
+    useEffect(() => {
+        if (!isOffline && isShowingCached) {
+            setIsShowingCached(false);
+        }
+    }, [isOffline, isShowingCached]);
     useEffect(() => {
         if (navigator.geolocation) {
             navigator.geolocation.getCurrentPosition(
@@ -391,8 +437,28 @@ export default function PharmacyMapPage() {
             setPharmacies(merged);
             setAshaWorkers(asha);
             setPharmacyCount(merged.length);
+
+            // ── Save bounds result to cache too ───────────────────────────
+            const cacheKey = buildCacheKey(centerLat, centerLng);
+            await saveToCache(cacheKey, merged, asha);
+            setIsShowingCached(false);
         } catch (err) {
             console.error("Critical error in bound pharmacy rendering:", err);
+
+            // ── Offline fallback for bounds fetch ─────────────────────────
+            const centerLat = bounds.center.lat;
+            const centerLng = bounds.center.lng;
+            const cacheKey = buildCacheKey(centerLat, centerLng);
+            const cached = await loadFromCache(cacheKey);
+            if (cached) {
+                setPharmacies(cached.pharmacies);
+                setAshaWorkers(cached.ashaWorkers);
+                setPharmacyCount(cached.pharmacies.length);
+                setIsShowingCached(true);
+                setIsLoading(false);
+                return;
+            }
+
             setFetchError("Could not load pharmacies. Try again.");
             setTimeout(() => setFetchError(null), 5000);
         } finally {
@@ -706,6 +772,9 @@ export default function PharmacyMapPage() {
                                             : " • Live from OSM"}
                                     </span>
                                 )}
+                                {isShowingCached && (
+                                    <span className="ml-1 text-amber-600">• Cached</span>
+                                )}
                             </p>
                         )}
                     </div>
@@ -793,7 +862,20 @@ export default function PharmacyMapPage() {
                             </button>
                         </div>
 
-                        {(locationError || fetchError) && (
+                        {/* ── Offline cached data banner ── */}
+                        {isShowingCached && (
+                            <div
+                                className="animate-in slide-in-from-top-2 absolute top-4 right-16 left-4 z-1000 flex items-center gap-2 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs font-semibold text-amber-700 shadow-lg duration-300 dark:border-amber-900/50 dark:bg-amber-950/20 dark:text-amber-400"
+                                role="alert"
+                                aria-live="polite"
+                            >
+                                <WifiOff size={13} className="shrink-0" />
+                                You are offline. Showing previously saved pharmacies near you.
+                            </div>
+                        )}
+
+                        {/* ── Error banner (location / fetch errors) ── */}
+                        {!isShowingCached && (locationError || fetchError) && (
                             <div className="animate-in slide-in-from-top-2 absolute top-4 right-16 left-4 z-1000 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-xs font-semibold text-red-700 shadow-lg duration-300 dark:border-red-900/50 dark:bg-red-950/20 dark:text-red-400">
                                 {locationError || fetchError}
                             </div>
