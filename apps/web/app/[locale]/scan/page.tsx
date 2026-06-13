@@ -1320,6 +1320,37 @@ export default function ScanPage() {
                                     verifyResult?.verified &&
                                     !verifyResult.medicine.is_counterfeit_alert && (
                                         <div className="flex w-full max-w-sm flex-col items-center gap-6">
+                                            {verifyResult.batch_status && (
+                                                <div
+                                                    className={`flex items-center gap-2 rounded-full px-4 py-1.5 text-xs font-bold ${
+                                                        verifyResult.batch_status === "safe"
+                                                            ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400"
+                                                            : verifyResult.batch_status ===
+                                                                "recalled"
+                                                              ? "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400"
+                                                              : "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400"
+                                                    } `}
+                                                >
+                                                    {verifyResult.batch_status === "safe" &&
+                                                        "✅ Batch Safe"}
+                                                    {verifyResult.batch_status === "recalled" &&
+                                                        "🚨 Batch Recalled"}
+                                                    {verifyResult.batch_status === "unknown" &&
+                                                        "⚠️ Batch Status Unknown"}
+                                                </div>
+                                            )}
+
+                                            {verifyResult.batch_status === "recalled" && (
+                                                <div className="w-full max-w-sm rounded-2xl border border-red-200 bg-red-50 p-4 dark:border-red-900/30 dark:bg-red-900/10">
+                                                    <p className="text-sm font-bold text-red-700 dark:text-red-400">
+                                                        ⚠️ This batch has been recalled
+                                                    </p>
+                                                    <p className="mt-1 text-xs text-red-600 dark:text-red-300">
+                                                        Please do not use this medicine. Return it
+                                                        to your pharmacy immediately.
+                                                    </p>
+                                                </div>
+                                            )}
                                             <VerifiedSafeResult
                                                 medicine={verifyResult.medicine}
                                                 scanMeta={verifyResult.scanMeta}
